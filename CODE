@@ -1,0 +1,82 @@
+import tensorflow as tf
+from tensorflow.keras.layers import Dense, Reshape, Flatten
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.optimizers import Adam
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Load MNIST dataset
+(x_train, _), (_, _) = tf.keras.datasets.mnist.load_data()
+x_train = x_train.astype('float32') / 255.0
+x_train = x_train.reshape(x_train.shape[0], 28, 28, 1)
+
+# Generator model
+generator = Sequential([
+    Dense(128, input_dim=100, activation='relu'),
+    Dense(784, activation='sigmoid'),
+    Reshape((28, 28, 1))
+])
+
+# Discriminator model
+discriminator = Sequential([
+    Flatten(input_shape=(28, 28, 1)),
+    Dense(128, activation='relu'),
+    Dense(1, activation='sigmoid')
+])
+
+# Combined model (GAN)
+discriminator.compile(optimizer=Adam(learning_rate=0.0002, beta_1=0.5), loss='binary_crossentropy')
+discriminator.trainable = False
+
+gan = Sequential([generator, discriminator])
+gan.compile(optimizer=Adam(learning_rate=0.0002, beta_1=0.5), loss='binary_crossentropy')
+
+# Function to train GAN
+def train_gan(epochs, batch_size):
+    for epoch in range(epochs):
+        # Generate real samples
+        idx = np.random.randint(0, x_train.shape[0], batch_size)
+        real_images = x_train[idx]
+
+        # Generate noise as input for the generator
+        noise = np.random.normal(0, 1, (batch_size, 100))
+
+        # Generate fake samples using the generator
+        generated_images = generator.predict(noise)
+
+        # Concatenate real and fake samples
+        X = np.concatenate((real_images, generated_images))
+        y = np.concatenate((np.ones((batch_size, 1)), np.zeros((batch_size, 1))))
+
+        # Train discriminator
+        discriminator.trainable = True
+        d_loss = discriminator.train_on_batch(X, y)
+
+        # Train generator (via GAN model)
+        noise = np.random.normal(0, 1, (batch_size, 100))
+        y_gen = np.ones((batch_size, 1))
+        discriminator.trainable = False
+        g_loss = gan.train_on_batch(noise, y_gen)
+
+        # Print progress
+        print(f"Epoch {epoch+1}, Discriminator Loss: {d_loss}, Generator Loss: {g_loss}")
+
+        # Plot generated images
+        if epoch % 100 == 0:
+            plot_generated_images(epoch, generator)
+
+# Function to plot generated images
+def plot_generated_images(epoch, generator, examples=10, dim=(1, 10), figsize=(10, 1)):
+    noise = np.random.normal(0, 1, size=[examples, 100])
+    generated_images = generator.predict(noise)
+    generated_images = generated_images.reshape(examples, 28, 28)
+    plt.figure(figsize=figsize)
+    for i in range(examples):
+        plt.subplot(dim[0], dim[1], i+1)
+        plt.imshow(generated_images[i], interpolation='nearest', cmap='gray')
+        plt.axis('off')
+    plt.tight_layout()
+    plt.show()
+
+# Train GAN
+train_gan(epochs=1000, batch_size=128)
